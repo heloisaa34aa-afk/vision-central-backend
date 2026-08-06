@@ -45,12 +45,9 @@ export async function syncFeedSource(sourceOrId: FeedSource | string) {
 
     let newPosts = 0;
     let ignoredPosts = 0;
-    // O scraper retorna os posts mais recentes primeiro. O primeiro shortcode inédito será nosso novo ultimo_item_id.
+    let processingError: Error | null = null;
+    // O item só pode ser marcado como processado depois de ser salvo no banco.
     let newLatestItemId = ultimoItemId;
-    if (posts.length > 0) {
-      // Como pode ter múltiplas mídias com o mesmo shortcode, pegamos o id do primeiro post retornado.
-      newLatestItemId = posts[0].id.split('_')[0]; 
-    }
     
     logger.info(`Quantidade de posts encontrados: ${posts.length}`);
 
@@ -98,11 +95,17 @@ export async function syncFeedSource(sourceOrId: FeedSource | string) {
             await storage.removeMedia(saved.previousStoragePath).catch(error => logger.warn('Nao foi possivel limpar a midia anterior', error));
           }
           newPosts++;
+          newLatestItemId = post.id.split('_')[0];
         } catch (err: any) {
+          processingError = err instanceof Error ? err : new Error(String(err));
           logger.warn(`Erro ao processar post ${post.id}`, err.message);
         }
         }));
       }
+    }
+
+    if (latestPost && newPosts === 0 && ignoredPosts === 0 && processingError) {
+      throw processingError;
     }
 
     const timeTaken = Math.round((Date.now() - startTime) / 1000);

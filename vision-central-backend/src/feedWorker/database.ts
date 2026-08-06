@@ -43,7 +43,7 @@ export const db = {
   async createMidia(midia: any) {
     const { data, error } = await supabase
       .from('midias')
-      .insert(midia)
+      .upsert(midia, { onConflict: 'id' })
       .select()
       .single();
     if (error) throw error;
@@ -83,7 +83,17 @@ export const db = {
       }).eq('id', mediaId);
       if (error) throw error;
     } else {
+      mediaId = `m-feed-${params.sourceId}`;
+      const { data: playlist, error: playlistError } = await supabase
+        .from('playlists')
+        .select('cliente_id')
+        .eq('id', params.playlistId)
+        .single();
+      if (playlistError) throw playlistError;
+
       const media = await this.createMidia({
+        id: mediaId,
+        cliente_id: playlist.cliente_id,
         nome: params.name,
         tipo: params.type,
         origem: 'storage',
@@ -92,7 +102,12 @@ export const db = {
         duracao: params.type === 'video' ? 15 : 10,
       });
       mediaId = String(media.id);
-      await this.linkMidiaToPlaylist(params.playlistId, mediaId, 0);
+      await this.linkMidiaToPlaylist(
+        params.playlistId,
+        mediaId,
+        0,
+        `pm-feed-${params.sourceId}`,
+      );
     }
 
     const { error: slotError } = await supabase.from('feed_source_media').upsert({
@@ -129,15 +144,16 @@ export const db = {
     }
   },
   
-  async linkMidiaToPlaylist(playlistId: string, midiaId: string, ordem: number) {
+  async linkMidiaToPlaylist(playlistId: string, midiaId: string, ordem: number, relationId?: string) {
     const { error } = await supabase
       .from('playlist_midias')
-      .insert({
+      .upsert({
+        id: relationId || `pm-${playlistId}-${midiaId}-${Date.now()}`,
         playlist_id: playlistId,
         midia_id: midiaId,
         ordem,
         duracao: 15
-      });
+      }, { onConflict: 'id' });
     if (error) throw error;
     
     await this.touchPlaylistDevices(playlistId);
