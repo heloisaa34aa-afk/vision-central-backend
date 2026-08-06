@@ -13,5 +13,11 @@ export const storage = {
       .getPublicUrl(fileName);
       
     return publicUrlData.publicUrl;
+  },
+
+  async removeMedia(fileName?: string | null): Promise<void> {
+    if (!fileName) return;
+    const { error } = await supabase.storage.from('midias').remove([fileName]);
+    if (error) throw error;
   }
 };

@@ -1,5 +1,4 @@
-import { InstagramScraper } from './scraper/instagram';
-import { FeedPost } from './scraper/types';
+import { instagramGraph } from './instagramGraph';
 
 export interface ScrapedPost {
   id: string;
@@ -9,35 +8,20 @@ export interface ScrapedPost {
 }
 
 export const scraper = {
-  async run(tipo: string, perfil: string, ultimoItemId?: string): Promise<ScrapedPost[]> {
+  async run(tipo: string, perfil: string, ultimoItemId?: string, connectionId?: string | null): Promise<ScrapedPost[]> {
     if (tipo !== 'instagram') {
       throw new Error(`Scraper para o tipo '${tipo}' não implementado.`);
     }
 
-    const instagramScraper = new InstagramScraper();
-    const { status, posts } = await instagramScraper.getPosts(perfil, ultimoItemId);
-    
-    if (status === 'SUCCESS') {
-      const flattenedPosts: ScrapedPost[] = [];
-      for (const post of posts) {
-        if (post.media && post.media.length > 0) {
-          // For carousels, map each media to a separate post
-          for (let i = 0; i < post.media.length; i++) {
-            const media = post.media[i];
-            flattenedPosts.push({
-              id: `${post.shortcode}_${i}`, // Using shortcode_index to maintain uniqueness
-              type: media.type,
-              mediaUrl: media.url,
-              thumbnailUrl: media.thumbnail
-            });
-          }
-        }
-      }
-      return flattenedPosts;
+    if (!connectionId) {
+      throw new Error('Conecte uma conta profissional do Instagram e associe-a a esta fonte.');
     }
-    
+
+    const officialPosts = await instagramGraph.getLatestMedia(connectionId);
+    if (officialPosts.length > 0) {
+      const latestId = officialPosts[0].id.split('_')[0];
+      return ultimoItemId === latestId ? [] : officialPosts;
+    }
     return [];
   }
 };
-
-

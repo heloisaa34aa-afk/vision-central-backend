@@ -1,7 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-
 import { initWorker } from "./src/feedWorker/worker";
 import { healthRouter } from "./src/routes/health";
 import { instagramRouter } from "./src/routes/instagram";
@@ -15,29 +14,32 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 
 // Middlewares
-app.use(cors());
+const allowedOrigins = (process.env.FRONTEND_URL || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+}));
 app.use(express.json());
 
-// Rota principal
-app.get("/", (_req, res) => {
-  res.json({
-    status: "Vision Central Backend",
-    online: true,
-    version: "1.0.0",
-  });
-});
-
-// Rotas da API
+// Routes
 app.use("/api/health", healthRouter);
 app.use("/api/instagram", instagramRouter);
 app.use("/api/feed", feedRouter);
 app.use("/api/apk", apkRouter);
 app.use("/api/gemini", geminiRouter);
 
-// Iniciar servidor
+app.get("/", (_req, res) => {
+  res.json({ status: "Vision Central Backend", online: true, version: "1.1.0" });
+});
+
+// Start Server
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[Backend] Server running on port ${PORT}`);
-
-  // Iniciar o worker do feed
+  
+  // Start Feed Worker
   initWorker();
 });

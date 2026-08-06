@@ -41,7 +41,7 @@ export async function syncFeedSource(sourceOrId: FeedSource | string) {
 
     // 1. Executar Scraper
     let ultimoItemId = source.ultimo_item_id || undefined;
-    const posts = await scraper.run(source.tipo, source.perfil, ultimoItemId);
+    const posts = await scraper.run(source.tipo, source.perfil, ultimoItemId, source.instagram_connection_id);
 
     let newPosts = 0;
     let ignoredPosts = 0;
@@ -54,10 +54,14 @@ export async function syncFeedSource(sourceOrId: FeedSource | string) {
     
     logger.info(`Quantidade de posts encontrados: ${posts.length}`);
 
-    const chunks = chunkArray(posts, 3);
-    
-    for (const chunk of chunks) {
-      await Promise.all(chunk.map(async (post: any, index: number) => {
+    // A fonte representa sempre a publicacao mais recente. Atualizamos um
+    // unico item estavel na playlist para evitar crescimento infinito e para
+    // o player trocar de conteudo sem mudar a ordem configurada.
+    const latestPost = posts[0];
+    if (latestPost) {
+      const chunks = chunkArray([latestPost], 1);
+      for (const chunk of chunks) {
+        await Promise.all(chunk.map(async (post: any) => {
         // Se a mídia já foi sincronizada ou está anterior ao shortcode (já tratado no scraper), apenas garanta segurança
         if (ultimoItemId && post.id.startsWith(ultimoItemId)) {
           ignoredPosts++;
@@ -72,28 +76,33 @@ export async function syncFeedSource(sourceOrId: FeedSource | string) {
           const now = new Date();
           const year = now.getFullYear();
           const month = String(now.getMonth() + 1).padStart(2, '0');
-          const fileName = `feed/${source.tipo}/${source.perfil}/${year}/${month}/${post.id}-${Date.now()}`;
+          const extension = contentType.includes('video') ? 'mp4' : contentType.includes('png') ? 'png' : 'jpg';
+          const fileName = `feed/${source.tipo}/${source.id}/${year}/${month}/${post.id}-${Date.now()}.${extension}`;
           
           logger.info(`Upload iniciado`, { id: post.id, arquivo: fileName });
           const publicUrl = await storage.uploadMedia(buffer, fileName, contentType);
           logger.info(`Upload concluído`, { id: post.id, caminho_salvo: fileName, bucket: 'midias', url: publicUrl });
 
           const prefix = source.tipo.toUpperCase();
-          const midia = await db.createMidia({
-            nome: `${prefix} @${source.perfil} - ${post.id}`,
-            tipo: post.type,
-            url_storage: publicUrl,
-            duracao: post.type === 'video' ? 15 : 10,
+          const saved = await db.saveLatestFeedMedia({
+            sourceId: source.id,
+            playlistId: source.playlist_id,
+            itemId: post.id,
+            name: `${prefix} @${source.perfil} - postagem mais recente`,
+            type: post.type,
+            publicUrl,
+            storagePath: fileName,
           });
-          logger.info(`Registro criado em midias`, { midia_id: midia.id, playlist_id: source.playlist_id, url: publicUrl, shortcode: post.id });
-
-          await db.linkMidiaToPlaylist(source.playlist_id, midia.id, 0);
-          logger.info(`Relacionamento criado em playlist_midias`, { playlist_id: source.playlist_id, midia_id: midia.id, ordem: 0 });
+          logger.info(`Midia dinamica atualizada`, { midia_id: saved.mediaId, playlist_id: source.playlist_id, shortcode: post.id });
+          if (saved.previousStoragePath && saved.previousStoragePath !== fileName) {
+            await storage.removeMedia(saved.previousStoragePath).catch(error => logger.warn('Nao foi possivel limpar a midia anterior', error));
+          }
           newPosts++;
         } catch (err: any) {
           logger.warn(`Erro ao processar post ${post.id}`, err.message);
         }
-      }));
+        }));
+      }
     }
 
     const timeTaken = Math.round((Date.now() - startTime) / 1000);
