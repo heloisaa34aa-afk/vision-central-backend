@@ -25,6 +25,13 @@ app.use("/api/apk", apkRouter);
 app.use("/api/gemini", geminiRouter);
 
 // Start Server
+app.get("/", (_, res) => {
+  res.json({
+    status: "Vision Central Backend",
+    online: true,
+    version: "1.0.0"
+  });
+});
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[Backend] Server running on port ${PORT}`);
   
