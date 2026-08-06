@@ -7,6 +7,8 @@ import { instagramRouter } from "./src/routes/instagram";
 import { feedRouter } from "./src/routes/feed";
 import { apkRouter } from "./src/routes/apk";
 import { geminiRouter } from "./src/routes/gemini";
+import { alertsRouter } from "./src/routes/alerts";
+import { initAlertMonitor } from "./src/alerts/monitor";
 
 dotenv.config();
 
@@ -31,6 +33,7 @@ app.use("/api/instagram", instagramRouter);
 app.use("/api/feed", feedRouter);
 app.use("/api/apk", apkRouter);
 app.use("/api/gemini", geminiRouter);
+app.use("/api/alerts", alertsRouter);
 
 app.get("/", (_req, res) => {
   res.json({ status: "Vision Central Backend", online: true, version: "1.1.0" });
@@ -42,4 +45,5 @@ app.listen(PORT, "0.0.0.0", () => {
   
   // Start Feed Worker
   initWorker();
+  initAlertMonitor();
 });
