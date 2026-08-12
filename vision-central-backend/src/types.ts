@@ -4,6 +4,8 @@ export interface FeedSource {
   tipo: 'instagram';
   perfil: string;
   intervalo_horas: number;
+  horario_execucao?: string | null;
+  timezone?: string | null;
   ativo: boolean;
   instagram_connection_id?: string | null;
   ultima_execucao?: string | null;

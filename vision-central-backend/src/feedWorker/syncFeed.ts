@@ -5,6 +5,7 @@ import { downloadMedia } from './downloadMedia';
 import { storage } from './storage';
 import { scraper } from './scraper';
 import { chunkArray } from './utils';
+import { nextDailyExecution } from './schedule';
 
 // Para controle de concorrência
 const activeSyncs = new Set<string>();
@@ -119,7 +120,10 @@ export async function syncFeedSource(sourceOrId: FeedSource | string) {
       status: 'Sucesso'
     });
 
-    const proximaExecucao = new Date(Date.now() + source.intervalo_horas * 60 * 60 * 1000).toISOString();
+    const proximaExecucao = nextDailyExecution(
+      source.horario_execucao || '08:00',
+      source.timezone || 'America/Bahia',
+    );
     logger.info(`Próxima execução calculada`, { proxima_execucao: proximaExecucao });
 
     // Atualizar registro no banco
