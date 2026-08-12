@@ -2,7 +2,7 @@ import { supabase } from '../feedWorker/supabaseClient';
 import { sendPush } from './push';
 
 const CHECK_INTERVAL_MS = 60_000;
-const OFFLINE_AFTER_SECONDS = Number(process.env.TV_OFFLINE_AFTER_SECONDS) || 120;
+const OFFLINE_AFTER_SECONDS = Number(process.env.TV_OFFLINE_AFTER_SECONDS) || 300;
 let started = false;
 let checking = false;
 
