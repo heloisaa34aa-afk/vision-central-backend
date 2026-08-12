@@ -9,6 +9,7 @@ import { apkRouter } from "./src/routes/apk";
 import { geminiRouter } from "./src/routes/gemini";
 import { alertsRouter } from "./src/routes/alerts";
 import { initAlertMonitor } from "./src/alerts/monitor";
+import { mediaRouter } from "./src/routes/media";
 
 dotenv.config();
 
@@ -23,7 +24,7 @@ const allowedOrigins = (process.env.FRONTEND_URL || '')
 
 app.use(cors({
   origin: allowedOrigins.length > 0 ? allowedOrigins : true,
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
 }));
 app.use(express.json());
 
@@ -34,6 +35,7 @@ app.use("/api/feed", feedRouter);
 app.use("/api/apk", apkRouter);
 app.use("/api/gemini", geminiRouter);
 app.use("/api/alerts", alertsRouter);
+app.use("/api/media", mediaRouter);
 
 app.get("/", (_req, res) => {
   res.json({ status: "Vision Central Backend", online: true, version: "1.1.0" });
