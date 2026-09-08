@@ -2,13 +2,13 @@ import { supabase } from '../feedWorker/supabaseClient';
 import { sendPush } from './push';
 
 const CHECK_INTERVAL_MS = 60_000;
-const OFFLINE_AFTER_SECONDS = Number(process.env.TV_OFFLINE_AFTER_SECONDS) || 300;
+const OFFLINE_AFTER_SECONDS = Number(process.env.TV_OFFLINE_AFTER_SECONDS) || 420;
 let started = false;
 let checking = false;
 
-function isOffline(tv: any) {
-  if (tv.status !== 'Online' || !tv.ultima_conexao) return true;
-  const lastSeen = new Date(tv.ultima_conexao).getTime();
+function isOffline(heartbeat: any) {
+  if (!heartbeat || heartbeat.status !== 'Online' || !heartbeat.last_seen_at) return true;
+  const lastSeen = new Date(heartbeat.last_seen_at).getTime();
   return !Number.isFinite(lastSeen) || Date.now() - lastSeen > OFFLINE_AFTER_SECONDS * 1000;
 }
 
@@ -35,20 +35,28 @@ export async function checkTvAlerts() {
   if (checking) return;
   checking = true;
   try {
-    const [{ data: tvs, error: tvError }, { data: clients, error: clientError }, { data: states, error: stateError }] = await Promise.all([
-      supabase.from('tvs').select('id,nome,cliente_id,status,ultima_conexao'),
+    const [
+      { data: tvs, error: tvError },
+      { data: heartbeats, error: heartbeatError },
+      { data: clients, error: clientError },
+      { data: states, error: stateError },
+    ] = await Promise.all([
+      supabase.from('tvs').select('id,nome,cliente_id'),
+      supabase.from('tv_heartbeats').select('tv_id,status,last_seen_at'),
       supabase.from('clientes').select('id,nome'),
       supabase.from('tv_alert_state').select('tv_id,is_offline'),
     ]);
     if (tvError) throw tvError;
+    if (heartbeatError) throw heartbeatError;
     if (clientError) throw clientError;
     if (stateError) throw stateError;
 
     const clientNames = new Map((clients || []).map((client: any) => [String(client.id), client.nome]));
+    const heartbeatByTv = new Map((heartbeats || []).map((heartbeat: any) => [String(heartbeat.tv_id), heartbeat]));
     const previous = new Map((states || []).map((state: any) => [String(state.tv_id), Boolean(state.is_offline)]));
 
     for (const tv of tvs || []) {
-      const offline = isOffline(tv);
+      const offline = isOffline(heartbeatByTv.get(String(tv.id)));
       const oldState = previous.get(String(tv.id));
       const changed = oldState === undefined ? offline : oldState !== offline;
 
