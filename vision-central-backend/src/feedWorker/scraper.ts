@@ -1,4 +1,6 @@
 import { InstagramScraper } from './scraper/instagram';
+import { instagramGraph } from './instagramGraph';
+import { logger } from './logger';
 
 export interface ScrapedPost {
   id: string;
@@ -20,12 +22,27 @@ function normalizeProfile(value: string): string {
 }
 
 export const scraper = {
-  async run(tipo: string, perfil: string, ultimoItemId?: string, _connectionId?: string | null): Promise<ScrapedPost[]> {
+  async run(tipo: string, perfil: string, ultimoItemId?: string, connectionId?: string | null): Promise<ScrapedPost[]> {
     if (tipo !== 'instagram') {
       throw new Error(`Scraper para o tipo '${tipo}' não implementado.`);
     }
 
     const normalizedProfile = normalizeProfile(perfil);
+
+    // Contas profissionais conectadas usam sempre a API oficial. Quando a
+    // fonte ainda não possui connection_id, reconhecemos automaticamente o
+    // mesmo @ cadastrado na conexão OAuth existente.
+    const officialConnectionId = connectionId ||
+      await instagramGraph.findActiveConnectionId(normalizedProfile);
+    if (officialConnectionId) {
+      logger.info(`Consultando @${normalizedProfile} pela API oficial do Instagram`);
+      const officialPosts = await instagramGraph.getLatestMedia(officialConnectionId);
+      if (officialPosts.length === 0) return [];
+      const latestId = officialPosts[0].id.split('_')[0];
+      return ultimoItemId === latestId ? [] : officialPosts;
+    }
+
+    logger.info(`Conta @${normalizedProfile} nao conectada; usando consulta publica`);
     const cached = profileCache.get(normalizedProfile);
     let publicPosts: ScrapedPost[];
 

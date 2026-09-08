@@ -117,6 +117,20 @@ export const instagramGraph = {
       : { connected: false };
   },
 
+  async findActiveConnectionId(username: string): Promise<string | null> {
+    const normalized = username.trim().replace(/^@+/, '').toLowerCase();
+    const { data, error } = await supabase
+      .from('instagram_connections')
+      .select('id')
+      .eq('status', 'ACTIVE')
+      .ilike('username', normalized)
+      .order('last_used_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.id ? String(data.id) : null;
+  },
+
   async getLatestMedia(connectionId?: string | null): Promise<Array<{ id: string; type: 'image' | 'video'; mediaUrl: string; thumbnailUrl?: string }>> {
     let query = supabase.from('instagram_connections').select('*').eq('status', 'ACTIVE');
     if (connectionId) query = query.eq('id', connectionId);
