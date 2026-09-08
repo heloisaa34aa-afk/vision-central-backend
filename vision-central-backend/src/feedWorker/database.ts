@@ -33,6 +33,23 @@ export const db = {
     const { error } = await supabase.from('feed_jobs').update(updates).eq('id', id);
     if (error) throw error;
   },
+
+  async deleteFeedSourceAndMedia(sourceId: string) {
+    const slot = await this.getFeedMediaSlot(sourceId);
+    if (slot?.midia_id) {
+      const { error: linkError } = await supabase.from('playlist_midias').delete().eq('midia_id', slot.midia_id);
+      if (linkError) throw linkError;
+      const { error: slotError } = await supabase.from('feed_source_media').delete().eq('source_id', sourceId);
+      if (slotError) throw slotError;
+      const { error: mediaError } = await supabase.from('midias').delete().eq('id', slot.midia_id);
+      if (mediaError) throw mediaError;
+    }
+    const { error: jobsError } = await supabase.from('feed_jobs').delete().eq('source_id', sourceId);
+    if (jobsError) throw jobsError;
+    const { error: sourceError } = await supabase.from('feed_sources').delete().eq('id', sourceId);
+    if (sourceError) throw sourceError;
+    return { storagePath: slot?.storage_path as string | undefined };
+  },
   async getFeedSourceById(id: string): Promise<FeedSource | null> {
     const { data, error } = await supabase
       .from('feed_sources')

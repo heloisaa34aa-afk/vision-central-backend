@@ -41,6 +41,16 @@ feedRouter.post('/sync/:id', async (req, res) => {
   } catch (error: any) { return res.status(500).json({ error: error.message }); }
 });
 
+feedRouter.delete('/:id', async (req, res) => {
+  try {
+    const source = await db.getFeedSourceById(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Fonte de feed nao encontrada.' });
+    const removed = await db.deleteFeedSourceAndMedia(source.id);
+    if (removed.storagePath) await storage.removeMedia(removed.storagePath).catch(error => console.warn('[Feed] Midia removida do banco, mas falhou no R2:', error));
+    return res.json({ success: true, message: 'Fonte, fila e midia removidas da playlist.' });
+  } catch (error: any) { return res.status(500).json({ error: error.message }); }
+});
+
 feedRouter.post('/collector/claim', requireCollector, async (req, res) => {
   try {
     const workerId = String(req.body?.workerId || '').trim().slice(0, 100);
