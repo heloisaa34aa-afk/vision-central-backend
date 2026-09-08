@@ -1,7 +1,7 @@
 -- Execute uma vez no SQL Editor do Supabase antes de publicar o backend.
 create table if not exists public.feed_jobs (
   id uuid primary key default gen_random_uuid(),
-  source_id uuid not null references public.feed_sources(id) on delete cascade,
+  source_id text not null references public.feed_sources(id) on delete cascade,
   status text not null default 'pending' check (status in ('pending','processing','completed','failed')),
   requested_at timestamptz not null default now(),
   available_at timestamptz not null default now(),
@@ -55,4 +55,3 @@ $$;
 
 revoke all on function public.claim_feed_job(text, integer) from public, anon, authenticated;
 grant execute on function public.claim_feed_job(text, integer) to service_role;
-
