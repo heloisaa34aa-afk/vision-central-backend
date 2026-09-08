@@ -72,6 +72,10 @@ feedRouter.post('/collector/jobs/:id/complete', requireCollector, upload.single(
     if (!req.file) return res.status(400).json({ error: 'Arquivo nao enviado.' });
     const workerId = String(req.body?.workerId || '');
     const itemId = String(req.body?.itemId || '').trim().slice(0, 150);
+    const rawDurationSeconds = Number(req.body?.durationSeconds);
+    const durationSeconds = Number.isFinite(rawDurationSeconds) && rawDurationSeconds > 0
+      ? Math.min(24 * 60 * 60, Math.ceil(rawDurationSeconds))
+      : 0;
     if (!itemId) return res.status(400).json({ error: 'itemId obrigatorio.' });
     const job = await db.getFeedJob(req.params.id);
     if (job.status !== 'processing' || job.locked_by !== workerId) return res.status(409).json({ error: 'Tarefa nao pertence a este coletor.' });
@@ -79,6 +83,7 @@ feedRouter.post('/collector/jobs/:id/complete', requireCollector, upload.single(
     if (!source) return res.status(404).json({ error: 'Fonte nao encontrada.' });
 
     if (source.ultimo_item_id === itemId) {
+      if (req.file.mimetype === 'video/mp4' && durationSeconds > 0) await db.updateFeedMediaDuration(source.id, durationSeconds);
       await db.updateFeedJob(job.id, { status: 'completed', completed_at: new Date().toISOString(), result_item_id: itemId });
       await db.updateFeedSource(source.id, { status: 'success', ultimo_erro: null, ultima_execucao: new Date().toISOString(),
         proxima_execucao: nextDailyExecution(source.horario_execucao || '08:00', source.timezone || 'America/Bahia') });
@@ -90,7 +95,8 @@ feedRouter.post('/collector/jobs/:id/complete', requireCollector, upload.single(
     const key = `feed/instagram/${source.id}/${now.getUTCFullYear()}/${String(now.getUTCMonth()+1).padStart(2,'0')}/${itemId}-${randomUUID()}.${extension}`;
     const publicUrl = await storage.uploadMedia(req.file.buffer, key, req.file.mimetype);
     const saved = await db.saveLatestFeedMedia({ sourceId: source.id, playlistId: source.playlist_id, itemId,
-      name: `INSTAGRAM @${source.perfil} - postagem mais recente`, type: req.file.mimetype === 'video/mp4' ? 'video' : 'image', publicUrl, storagePath: key });
+      name: `INSTAGRAM @${source.perfil} - postagem mais recente`, type: req.file.mimetype === 'video/mp4' ? 'video' : 'image', publicUrl, storagePath: key,
+      durationSeconds: req.file.mimetype === 'video/mp4' ? durationSeconds || 15 : 10 });
     if (saved.previousStoragePath && saved.previousStoragePath !== key) await storage.removeMedia(saved.previousStoragePath).catch(console.warn);
     await db.updateFeedSource(source.id, { status: 'success', ultimo_erro: null, ultima_execucao: new Date().toISOString(),
       ultimo_item_id: itemId, proxima_execucao: nextDailyExecution(source.horario_execucao || '08:00', source.timezone || 'America/Bahia'),

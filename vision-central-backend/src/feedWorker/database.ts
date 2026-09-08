@@ -116,6 +116,7 @@ export const db = {
     type: 'image' | 'video';
     publicUrl: string;
     storagePath: string;
+    durationSeconds?: number;
   }) {
     const existing = await this.getFeedMediaSlot(params.sourceId);
     let mediaId = existing?.midia_id as string | undefined;
@@ -127,7 +128,7 @@ export const db = {
         origem: 'storage',
         url_storage: params.publicUrl,
         url_externa: null,
-        duracao: params.type === 'video' ? 15 : 10,
+        duracao: params.type === 'video' ? Math.max(1, Math.ceil(params.durationSeconds || 15)) : 10,
       }).eq('id', mediaId);
       if (error) throw error;
     } else {
@@ -147,7 +148,7 @@ export const db = {
         origem: 'storage',
         url_storage: params.publicUrl,
         url_externa: null,
-        duracao: params.type === 'video' ? 15 : 10,
+        duracao: params.type === 'video' ? Math.max(1, Math.ceil(params.durationSeconds || 15)) : 10,
       });
       mediaId = String(media.id);
       await this.linkMidiaToPlaylist(
@@ -155,6 +156,7 @@ export const db = {
         mediaId,
         0,
         `pm-feed-${params.sourceId}`,
+        params.type === 'video' ? Math.max(1, Math.ceil(params.durationSeconds || 15)) : 10,
       );
     }
 
@@ -169,6 +171,16 @@ export const db = {
 
     await this.touchPlaylistDevices(params.playlistId);
     return { mediaId, previousStoragePath: existing?.storage_path as string | undefined };
+  },
+
+  async updateFeedMediaDuration(sourceId: string, durationSeconds: number) {
+    const slot = await this.getFeedMediaSlot(sourceId);
+    if (!slot?.midia_id) return;
+    const duration = Math.max(1, Math.ceil(durationSeconds));
+    const { error: mediaError } = await supabase.from('midias').update({ duracao: duration }).eq('id', slot.midia_id);
+    if (mediaError) throw mediaError;
+    const { error: linkError } = await supabase.from('playlist_midias').update({ duracao: duration }).eq('midia_id', slot.midia_id);
+    if (linkError) throw linkError;
   },
 
   async touchPlaylistDevices(playlistId: string) {
@@ -192,7 +204,7 @@ export const db = {
     }
   },
   
-  async linkMidiaToPlaylist(playlistId: string, midiaId: string, ordem: number, relationId?: string) {
+  async linkMidiaToPlaylist(playlistId: string, midiaId: string, ordem: number, relationId?: string, duration = 15) {
     const { error } = await supabase
       .from('playlist_midias')
       .upsert({
@@ -200,7 +212,7 @@ export const db = {
         playlist_id: playlistId,
         midia_id: midiaId,
         ordem,
-        duracao: 15
+        duracao: duration
       }, { onConflict: 'id' });
     if (error) throw error;
     
