@@ -1,10 +1,8 @@
 import { db } from './database';
 import { logger } from './logger';
-import { syncFeedSource } from './syncFeed';
 
 // Intervalo de verificação: 5 minutos
 const CHECK_INTERVAL = 5 * 60 * 1000;
-const PROFILE_DELAY_MS = Math.max(5_000, Number(process.env.INSTAGRAM_PROFILE_DELAY_MS || 45_000));
 
 let schedulerIntervalId: NodeJS.Timeout | null = null;
 let cycleRunning = false;
@@ -25,10 +23,6 @@ function normalizeProfile(value: string) {
   return value.trim().replace(/^@+/, '').toLowerCase();
 }
 
-function wait(milliseconds: number) {
-  return new Promise(resolve => setTimeout(resolve, milliseconds));
-}
-
 export async function runDueSources(origin = 'manual-cron'): Promise<{ started: boolean; sources: number; profiles: number }> {
   if (cycleRunning) {
     logger.warn(`Ciclo do scheduler ignorado (${origin}): outro ciclo esta em andamento.`);
@@ -47,15 +41,12 @@ export async function runDueSources(origin = 'manual-cron'): Promise<{ started: 
       groups.set(profile, [...(groups.get(profile) || []), source]);
     }
 
-    let groupIndex = 0;
     for (const [profile, profileSources] of groups) {
-      if (groupIndex > 0) {
-        logger.info(`Aguardando intervalo seguro antes de consultar @${profile}`, { milliseconds: PROFILE_DELAY_MS });
-        await wait(PROFILE_DELAY_MS);
+      for (const source of profileSources) {
+        await db.enqueueFeedJob(source.id);
+        await db.updateFeedSource(source.id, { status: 'queued', ultimo_erro: null });
       }
-      // Fontes repetidas usam o cache em memoria do scraper; o perfil e consultado uma vez.
-      for (const source of profileSources) await syncFeedSource(source);
-      groupIndex++;
+      logger.info(`Perfil colocado na fila do coletor`, { perfil: profile, fontes: profileSources.length });
     }
     return { started: true, sources: sources.length, profiles: groups.size };
   } catch (error: any) {

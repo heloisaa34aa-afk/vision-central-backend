@@ -2,6 +2,37 @@ import { FeedSource } from '../types';
 import { supabase } from './supabaseClient';
 
 export const db = {
+  async enqueueFeedJob(sourceId: string) {
+    const { data: existing } = await supabase.from('feed_jobs').select('*')
+      .eq('source_id', sourceId).in('status', ['pending', 'processing']).maybeSingle();
+    if (existing) return existing;
+    const { data, error } = await supabase.from('feed_jobs').insert({ source_id: sourceId }).select().single();
+    if (error?.code === '23505') {
+      const { data: raced, error: racedError } = await supabase.from('feed_jobs').select('*')
+        .eq('source_id', sourceId).in('status', ['pending', 'processing']).single();
+      if (racedError) throw racedError;
+      return raced;
+    }
+    if (error) throw error;
+    return data;
+  },
+
+  async claimFeedJob(workerId: string) {
+    const { data, error } = await supabase.rpc('claim_feed_job', { p_worker_id: workerId, p_lock_seconds: 900 });
+    if (error) throw error;
+    return data?.[0] || null;
+  },
+
+  async getFeedJob(id: string) {
+    const { data, error } = await supabase.from('feed_jobs').select('*').eq('id', id).single();
+    if (error) throw error;
+    return data;
+  },
+
+  async updateFeedJob(id: string, updates: Record<string, unknown>) {
+    const { error } = await supabase.from('feed_jobs').update(updates).eq('id', id);
+    if (error) throw error;
+  },
   async getFeedSourceById(id: string): Promise<FeedSource | null> {
     const { data, error } = await supabase
       .from('feed_sources')
