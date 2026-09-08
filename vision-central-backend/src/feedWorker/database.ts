@@ -179,8 +179,13 @@ export const db = {
     const duration = Math.max(1, Math.ceil(durationSeconds));
     const { error: mediaError } = await supabase.from('midias').update({ duracao: duration }).eq('id', slot.midia_id);
     if (mediaError) throw mediaError;
-    const { error: linkError } = await supabase.from('playlist_midias').update({ duracao: duration }).eq('midia_id', slot.midia_id);
+    const { data: links, error: linkError } = await supabase.from('playlist_midias')
+      .update({ duracao: duration })
+      .eq('midia_id', slot.midia_id)
+      .select('playlist_id');
     if (linkError) throw linkError;
+    const playlistIds = new Set((links || []).map(link => String(link.playlist_id)).filter(Boolean));
+    for (const playlistId of playlistIds) await this.touchPlaylistDevices(playlistId);
   },
 
   async touchPlaylistDevices(playlistId: string) {
