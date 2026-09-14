@@ -26,7 +26,7 @@ export function getVapidPublicKey() {
   return configureWebPush();
 }
 
-export async function saveSubscription(subscription: PushSubscription, userAgent?: string) {
+export async function saveSubscription(subscription: PushSubscription, userAgent: string | undefined, identity: { userId: string; role: 'admin' | 'client' }) {
   if (!subscription?.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
     throw new Error('Assinatura de notificação inválida.');
   }
@@ -36,22 +36,25 @@ export async function saveSubscription(subscription: PushSubscription, userAgent
     p256dh: subscription.keys.p256dh,
     auth: subscription.keys.auth,
     user_agent: userAgent || null,
+    user_id: identity.userId,
+    cliente_id: null,
+    role: identity.role,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'endpoint' });
 
   if (error) throw error;
 }
 
-export async function removeSubscription(endpoint: string) {
-  const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
+export async function removeSubscription(endpoint: string, userId: string) {
+  const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint).eq('user_id', userId);
   if (error) throw error;
 }
 
-export async function sendPush(payload: AlertPayload, onlyEndpoint?: string) {
+export async function sendPush(payload: AlertPayload, options: { onlyEndpoint?: string; targetOwnerUserId?: string | null; onlyUserId?: string } = {}) {
   configureWebPush();
 
-  let query = supabase.from('push_subscriptions').select('endpoint,p256dh,auth');
-  if (onlyEndpoint) query = query.eq('endpoint', onlyEndpoint);
+  let query = supabase.from('push_subscriptions').select('endpoint,p256dh,auth,user_id,cliente_id,role');
+  if (options.onlyEndpoint) query = query.eq('endpoint', options.onlyEndpoint);
   const { data, error } = await query;
   if (error) throw error;
 
@@ -59,6 +62,8 @@ export async function sendPush(payload: AlertPayload, onlyEndpoint?: string) {
   let delivered = 0;
 
   for (const item of data || []) {
+    if (options.onlyUserId && item.user_id !== options.onlyUserId) continue;
+    if (!options.onlyEndpoint && Object.prototype.hasOwnProperty.call(options, 'targetOwnerUserId') && item.role !== 'admin' && item.user_id !== options.targetOwnerUserId) continue;
     try {
       await webpush.sendNotification({
         endpoint: item.endpoint,

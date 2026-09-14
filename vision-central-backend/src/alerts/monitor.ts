@@ -12,7 +12,7 @@ function isOffline(heartbeat: any) {
   return !Number.isFinite(lastSeen) || Date.now() - lastSeen > OFFLINE_AFTER_SECONDS * 1000;
 }
 
-async function recordAndNotify(tv: any, clientName: string, offline: boolean) {
+async function recordAndNotify(tv: any, clientName: string, ownerUserId: string | null, offline: boolean) {
   const type = offline ? 'offline' : 'recovered';
   const title = offline ? `TV offline: ${tv.nome}` : `TV recuperada: ${tv.nome}`;
   const body = offline
@@ -28,7 +28,7 @@ async function recordAndNotify(tv: any, clientName: string, offline: boolean) {
   });
   if (error) console.error('[Alerts] Falha ao registrar evento:', error.message);
 
-  await sendPush({ title, body, type, tag: `tv-${tv.id}`, url: '/?tab=alerts' });
+  await sendPush({ title, body, type, tag: `tv-${tv.id}`, url: '/#alertas' }, { targetOwnerUserId: ownerUserId });
 }
 
 export async function checkTvAlerts() {
@@ -43,7 +43,7 @@ export async function checkTvAlerts() {
     ] = await Promise.all([
       supabase.from('tvs').select('id,nome,cliente_id'),
       supabase.from('tv_heartbeats').select('tv_id,status,last_seen_at'),
-      supabase.from('clientes').select('id,nome'),
+      supabase.from('clientes').select('id,nome,owner_user_id'),
       supabase.from('tv_alert_state').select('tv_id,is_offline'),
     ]);
     if (tvError) throw tvError;
@@ -52,6 +52,7 @@ export async function checkTvAlerts() {
     if (stateError) throw stateError;
 
     const clientNames = new Map((clients || []).map((client: any) => [String(client.id), client.nome]));
+    const clientOwners = new Map((clients || []).map((client: any) => [String(client.id), client.owner_user_id ? String(client.owner_user_id) : null]));
     const heartbeatByTv = new Map((heartbeats || []).map((heartbeat: any) => [String(heartbeat.tv_id), heartbeat]));
     const previous = new Map((states || []).map((state: any) => [String(state.tv_id), Boolean(state.is_offline)]));
 
@@ -70,7 +71,7 @@ export async function checkTvAlerts() {
 
       if (changed) {
         const clientName = clientNames.get(String(tv.cliente_id)) || 'Cliente não identificado';
-        await recordAndNotify(tv, clientName, offline);
+        await recordAndNotify(tv, clientName, clientOwners.get(String(tv.cliente_id)) || null, offline);
       }
     }
   } catch (error: any) {
