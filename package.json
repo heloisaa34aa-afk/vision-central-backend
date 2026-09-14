@@ -8,6 +8,7 @@
     "start": "node dist/server.cjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.883.0",
     "@google/genai": "^2.4.0",
     "@supabase/supabase-js": "^2.110.2",
     "dotenv": "^17.2.3",
