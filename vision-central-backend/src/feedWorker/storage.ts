@@ -1,3 +1,5 @@
+import { createReadStream } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { supabase } from './supabaseClient';
 import { deleteFromR2, isR2Configured, uploadToR2 } from '../storage/r2';
 
@@ -19,6 +21,20 @@ export const storage = {
       .getPublicUrl(fileName);
       
     return publicUrlData.publicUrl;
+  },
+
+  async uploadMediaFile(filePath: string, fileSize: number, fileName: string, contentType: string): Promise<string> {
+    if (isR2Configured()) {
+      return uploadToR2(createReadStream(filePath), fileName, contentType, fileSize);
+    }
+
+    console.warn('[Storage] R2 nao configurado; usando Supabase Storage como fallback.');
+    const buffer = await readFile(filePath);
+    const { error } = await supabase.storage
+      .from('midias')
+      .upload(fileName, buffer, { contentType, upsert: true });
+    if (error) throw error;
+    return supabase.storage.from('midias').getPublicUrl(fileName).data.publicUrl;
   },
 
   async removeMedia(fileName?: string | null): Promise<void> {

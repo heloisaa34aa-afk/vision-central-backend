@@ -1,4 +1,5 @@
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import type { Readable } from 'node:stream';
 
 const requiredEnvironment = [
   'R2_ACCOUNT_ID',
@@ -67,15 +68,17 @@ export function getR2KeyFromPublicUrl(fileUrl: string): string | null {
 }
 
 export async function uploadToR2(
-  body: Uint8Array | Buffer | ArrayBuffer,
+  body: Uint8Array | Buffer | ArrayBuffer | Readable,
   key: string,
   contentType: string,
+  contentLength?: number,
 ): Promise<string> {
   const normalizedKey = normalizeKey(key);
   await getClient().send(new PutObjectCommand({
     Bucket: requireEnvironment('R2_BUCKET_NAME'),
     Key: normalizedKey,
     Body: body instanceof ArrayBuffer ? new Uint8Array(body) : body,
+    ...(contentLength ? { ContentLength: contentLength } : {}),
     ContentType: contentType,
     CacheControl: 'public, max-age=31536000, immutable',
   }));

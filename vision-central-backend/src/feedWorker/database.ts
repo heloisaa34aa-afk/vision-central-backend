@@ -2,11 +2,14 @@ import { FeedSource } from '../types';
 import { supabase } from './supabaseClient';
 
 export const db = {
-  async enqueueFeedJob(sourceId: string) {
+  async enqueueFeedJob(sourceId: string, availableAt?: string) {
     const { data: existing } = await supabase.from('feed_jobs').select('*')
       .eq('source_id', sourceId).in('status', ['pending', 'processing']).maybeSingle();
     if (existing) return existing;
-    const { data, error } = await supabase.from('feed_jobs').insert({ source_id: sourceId }).select().single();
+    const { data, error } = await supabase.from('feed_jobs').insert({
+      source_id: sourceId,
+      ...(availableAt ? { available_at: availableAt } : {}),
+    }).select().single();
     if (error?.code === '23505') {
       const { data: raced, error: racedError } = await supabase.from('feed_jobs').select('*')
         .eq('source_id', sourceId).in('status', ['pending', 'processing']).single();
@@ -31,6 +34,24 @@ export const db = {
 
   async updateFeedJob(id: string, updates: Record<string, unknown>) {
     const { error } = await supabase.from('feed_jobs').update(updates).eq('id', id);
+    if (error) throw error;
+  },
+
+  async getActiveFeedJobForSources(sourceIds: string[]) {
+    if (sourceIds.length === 0) return null;
+    const { data, error } = await supabase.from('feed_jobs').select('*')
+      .in('source_id', sourceIds).in('status', ['pending', 'processing'])
+      .order('requested_at', { ascending: true }).limit(1).maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  async completeActiveFeedJobsForSources(sourceIds: string[], itemId: string) {
+    if (sourceIds.length === 0) return;
+    const { error } = await supabase.from('feed_jobs').update({
+      status: 'completed', completed_at: new Date().toISOString(), result_item_id: itemId,
+      locked_at: null, locked_by: null, lock_expires_at: null, error: null,
+    }).in('source_id', sourceIds).in('status', ['pending', 'processing']);
     if (error) throw error;
   },
 
@@ -171,6 +192,12 @@ export const db = {
 
     await this.touchPlaylistDevices(params.playlistId);
     return { mediaId, previousStoragePath: existing?.storage_path as string | undefined };
+  },
+
+  async getActiveFeedSourcesByProfile(profile: string): Promise<FeedSource[]> {
+    const normalized = profile.trim().replace(/^@+/, '').toLowerCase();
+    const sources = await this.getActiveFeedSources();
+    return sources.filter(source => source.perfil.trim().replace(/^@+/, '').toLowerCase() === normalized);
   },
 
   async updateFeedMediaDuration(sourceId: string, durationSeconds: number) {

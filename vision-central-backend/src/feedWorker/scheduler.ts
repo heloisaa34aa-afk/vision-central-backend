@@ -41,12 +41,25 @@ export async function runDueSources(origin = 'manual-cron'): Promise<{ started: 
       groups.set(profile, [...(groups.get(profile) || []), source]);
     }
 
+    let profileIndex = 0;
     for (const [profile, profileSources] of groups) {
+      const sourceIds = profileSources.map(source => source.id);
+      const existingJob = await db.getActiveFeedJobForSources(sourceIds);
+      if (!existingJob) {
+        // Espalha perfis diferentes ao longo de ate 20 minutos, evitando rajadas no Instagram.
+        const baseDelaySeconds = profileIndex * 90;
+        const randomDelaySeconds = Math.floor(Math.random() * 180);
+        const delaySeconds = Math.min(20 * 60, baseDelaySeconds + randomDelaySeconds);
+        const availableAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+        await db.enqueueFeedJob(profileSources[0].id, availableAt);
+      }
       for (const source of profileSources) {
-        await db.enqueueFeedJob(source.id);
         await db.updateFeedSource(source.id, { status: 'queued', ultimo_erro: null });
       }
-      logger.info(`Perfil colocado na fila do coletor`, { perfil: profile, fontes: profileSources.length });
+      logger.info(`Perfil colocado na fila do coletor`, {
+        perfil: profile, fontes: profileSources.length, tarefa_existente: Boolean(existingJob),
+      });
+      profileIndex += 1;
     }
     return { started: true, sources: sources.length, profiles: groups.size };
   } catch (error: any) {
