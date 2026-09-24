@@ -55,21 +55,54 @@ export const db = {
     if (error) throw error;
   },
 
-  async deleteFeedSourceAndMedia(sourceId: string) {
+  async removeFeedSourceMedia(sourceId: string) {
     const slot = await this.getFeedMediaSlot(sourceId);
-    if (slot?.midia_id) {
-      const { error: linkError } = await supabase.from('playlist_midias').delete().eq('midia_id', slot.midia_id);
+    const fallbackMediaId = `m-feed-${sourceId}`;
+    let fallbackMedia: { id: string } | null = null;
+    if (!slot?.midia_id) {
+      const { data, error } = await supabase.from('midias').select('id').eq('id', fallbackMediaId).maybeSingle();
+      if (error) throw error;
+      fallbackMedia = data;
+    }
+    const mediaId = slot?.midia_id || fallbackMedia?.id;
+    const playlistIds = new Set<string>();
+
+    if (mediaId) {
+      const { data: links, error: linksReadError } = await supabase
+        .from('playlist_midias')
+        .select('playlist_id')
+        .eq('midia_id', mediaId);
+      if (linksReadError) throw linksReadError;
+      for (const link of links || []) {
+        if (link.playlist_id) playlistIds.add(String(link.playlist_id));
+      }
+
+      const { error: linkError } = await supabase.from('playlist_midias').delete().eq('midia_id', mediaId);
       if (linkError) throw linkError;
       const { error: slotError } = await supabase.from('feed_source_media').delete().eq('source_id', sourceId);
       if (slotError) throw slotError;
-      const { error: mediaError } = await supabase.from('midias').delete().eq('id', slot.midia_id);
+      const { error: mediaError } = await supabase.from('midias').delete().eq('id', mediaId);
       if (mediaError) throw mediaError;
     }
+
+    for (const playlistId of playlistIds) await this.touchPlaylistDevices(playlistId);
+    return { storagePath: slot?.storage_path as string | undefined, playlistIds: [...playlistIds] };
+  },
+
+  async deactivateFeedSource(sourceId: string) {
+    await this.updateFeedSource(sourceId, { ativo: false, status: 'inactive', ultimo_erro: null });
+    const { error: jobsError } = await supabase.from('feed_jobs').delete().eq('source_id', sourceId);
+    if (jobsError) throw jobsError;
+    return this.removeFeedSourceMedia(sourceId);
+  },
+
+  async deleteFeedSourceAndMedia(sourceId: string) {
+    const removed = await this.removeFeedSourceMedia(sourceId);
     const { error: jobsError } = await supabase.from('feed_jobs').delete().eq('source_id', sourceId);
     if (jobsError) throw jobsError;
     const { error: sourceError } = await supabase.from('feed_sources').delete().eq('id', sourceId);
     if (sourceError) throw sourceError;
-    return { storagePath: slot?.storage_path as string | undefined };
+    return removed;
   },
   async getFeedSourceById(id: string): Promise<FeedSource | null> {
     const { data, error } = await supabase

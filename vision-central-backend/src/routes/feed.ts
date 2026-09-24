@@ -62,9 +62,23 @@ feedRouter.post('/sync/:id', async (req, res) => {
   try {
     const source = await db.getFeedSourceById(req.params.id);
     if (!source) return res.status(404).json({ error: 'Fonte de feed nao encontrada.' });
+    if (!source.ativo) return res.status(409).json({ error: 'Ative a fonte antes de solicitar uma nova consulta.' });
     const job = await db.enqueueFeedJob(source.id);
     await db.updateFeedSource(source.id, { status: 'queued', ultimo_erro: null });
     return res.status(202).json({ success: true, message: 'Consulta aguardando um coletor.', jobId: job.id });
+  } catch (error: any) { return res.status(500).json({ error: error.message }); }
+});
+
+feedRouter.post('/:id/deactivate', async (req, res) => {
+  try {
+    const source = await db.getFeedSourceById(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Fonte de feed nao encontrada.' });
+    const removed = await db.deactivateFeedSource(source.id);
+    if (removed.storagePath) {
+      await storage.removeMedia(removed.storagePath)
+        .catch(error => console.warn('[Feed] Midia retirada do player, mas falhou ao excluir do R2:', error));
+    }
+    return res.json({ success: true, message: 'Fonte desativada e midia retirada do player.' });
   } catch (error: any) { return res.status(500).json({ error: error.message }); }
 });
 
@@ -108,6 +122,14 @@ feedRouter.post('/collector/jobs/:id/complete', requireCollector, receiveCollect
     if (job.status !== 'processing' || job.locked_by !== workerId) return res.status(409).json({ error: 'Tarefa nao pertence a este coletor.' });
     const source = await db.getFeedSourceById(job.source_id);
     if (!source) return res.status(404).json({ error: 'Fonte nao encontrada.' });
+    if (!source.ativo) {
+      await db.updateFeedJob(job.id, {
+        status: 'failed', completed_at: new Date().toISOString(),
+        locked_at: null, locked_by: null, lock_expires_at: null,
+        error: 'Fonte desativada durante a coleta.',
+      });
+      return res.status(409).json({ error: 'Fonte desativada; a midia coletada foi descartada.' });
+    }
 
     // Uma unica coleta atende todos os vinculos ativos do mesmo @perfil.
     const profileSources = await db.getActiveFeedSourcesByProfile(source.perfil);
