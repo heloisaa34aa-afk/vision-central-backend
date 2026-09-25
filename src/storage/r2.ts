@@ -1,4 +1,5 @@
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const requiredEnvironment = [
   'R2_ACCOUNT_ID',
@@ -80,6 +81,21 @@ export async function uploadToR2(
     CacheControl: 'public, max-age=31536000, immutable',
   }));
   return getR2PublicUrl(normalizedKey);
+}
+
+export async function createR2UploadUrl(
+  key: string,
+  contentType: string,
+  expiresInSeconds = 15 * 60,
+): Promise<{ uploadUrl: string; publicUrl: string }> {
+  const normalizedKey = normalizeKey(key);
+  const command = new PutObjectCommand({
+    Bucket: requireEnvironment('R2_BUCKET_NAME'),
+    Key: normalizedKey,
+    ContentType: contentType,
+  });
+  const uploadUrl = await getSignedUrl(getClient(), command, { expiresIn: expiresInSeconds });
+  return { uploadUrl, publicUrl: getR2PublicUrl(normalizedKey) };
 }
 
 export async function deleteFromR2(key: string): Promise<void> {

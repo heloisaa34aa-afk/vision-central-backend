@@ -1,0 +1,12 @@
+[
+  {
+    "AllowedOrigins": [
+      "https://vison-central-nu.vercel.app",
+      "http://localhost:5173"
+    ],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
+    "AllowedHeaders": ["Content-Type"],
+    "ExposeHeaders": ["ETag", "Content-Length"],
+    "MaxAgeSeconds": 3600
+  }
+]
